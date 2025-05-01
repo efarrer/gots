@@ -1,0 +1,28 @@
+---
+services:
+  ts-{{.ExecName}}:
+    image: tailscale/tailscale:latest
+    hostname: {{.ExecName}}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.config
+    volumes:
+      - {{.WorkDir}}/.tailscale:/var/lib/tailscale
+      - ${PWD}/serve.config:/config/serve.config
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+      - sys_module
+    restart: unless-stopped
+    dns:
+      - 100.100.100.100  # For tailnet address (<mach>.<tailnet>.ts.net) lookups.
+      - 8.8.8.8  # For external lookups.
+  {{.ExecName}}:
+    image: {{.ExecName}}
+    network_mode: service:ts-{{.ExecName}}
+    depends_on:
+      - ts-{{.ExecName}}
+    volumes:{{range $index, $arg := .DockerVolumes}}
+      - {{$arg.HostDir}}:{{$arg.DockerDir}}{{end}}
