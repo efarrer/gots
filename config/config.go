@@ -144,7 +144,7 @@ func (c *Config) requestExecName() *Config {
 }
 
 func (c *Config) requestCompileCommand() *Config {
-	if c.CompileCommand == nil {
+	if c.CompileCommand != nil {
 		return c
 	}
 	c.mutated = true
