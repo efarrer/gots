@@ -36,6 +36,7 @@ type Config struct {
 	ExecName       string
 	ExecArgs       []string
 	CompileCommand []string
+	Port           *int
 	Funnel         *bool
 	DockerVolumes  []Volume
 	WorkDir        string
@@ -100,6 +101,7 @@ func (c *Config) RequestMissingConfiguration() {
 		requestExecName().
 		requestCompileCommand().
 		requestExecArgs().
+		requestPort().
 		requestFunnel().
 		requestVolumes()
 }
@@ -182,6 +184,22 @@ func (c *Config) requestExecArgs() *Config {
 		}
 		c.ExecArgs = append(c.ExecArgs, args)
 	}
+	return c
+}
+
+func (c *Config) requestPort() *Config {
+	if c.Port != nil {
+		return c
+	}
+	c.mutated = true
+	if c.dryRun {
+		return c
+	}
+
+	fmt.Print("What TCP port is used by the application (default 80): ")
+	port := 80
+	fmt.Scanf("%d", &port)
+	c.Port = &port
 	return c
 }
 
