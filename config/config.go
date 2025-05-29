@@ -266,8 +266,8 @@ func (c *Config) String() {
 	}
 }
 
-// ConfirmConfigurtion prints the configuraiton and asks the user if it is correct.
-func (c *Config) ConfirmConfigurtion() {
+// ConfirmConfiguration prints the configuraiton and asks the user if it is correct.
+func (c *Config) ConfirmConfiguration() {
 	if !c.mutated {
 		return
 	}

@@ -37,7 +37,7 @@ func main() {
 	// Config
 	if configFlag {
 		cfg.RequestMissingConfiguration()
-		cfg.ConfirmConfigurtion()
+		cfg.ConfirmConfiguration()
 		cfg.Save()
 		return
 	}
