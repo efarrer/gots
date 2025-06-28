@@ -53,7 +53,7 @@ func main() {
 
 	// Validate for Generate or Run
 	if generateFlag || startFlag || stopFlag {
-		if cfg.ValidateComplete() {
+		if !cfg.ValidateComplete() {
 			fmt.Fprintf(os.Stderr, "Configuration is not complete re-run gots with -config\n")
 			return
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"text/template"
 
@@ -61,6 +62,52 @@ func StringsToVolumes(strs []string) []Volume {
 	return ret
 }
 
+// GetNilFieldNames iterates over a struct and returns the names of fields
+// that are not nil (for pointer types) or are not their zero value (for non-pointer types).
+func GetNilFieldNames(s interface{}) []string {
+	var fieldNames []string
+	val := reflect.ValueOf(s)
+
+	// Ensure we're dealing with a struct
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	if val.Kind() != reflect.Struct {
+		return fieldNames
+	}
+
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		fieldType := val.Type().Field(i)
+
+		// Check for nil for pointer types
+		if field.Kind() == reflect.Ptr {
+			if field.IsNil() {
+				fieldNames = append(fieldNames, fieldType.Name)
+			}
+			// Check for empty slices
+		} else if field.Kind() == reflect.Slice {
+			if field.IsNil() {
+				fieldNames = append(fieldNames, fieldType.Name)
+			}
+		}
+
+	}
+	return fieldNames
+}
+
+// FilterSlice removes elements from a slice that satisfy the filter function.
+// The filter function should return true for elements to be removed.
+func FilterSlice[T any](slice []T, filter func(T) bool) []T {
+	var result []T
+	for _, item := range slice {
+		if !filter(item) { // If the filter returns false, keep the item
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
 // Config the gots configuration
 type Config struct {
 	ExecName                 *string
@@ -72,8 +119,6 @@ type Config struct {
 	Funnel        *bool
 	DockerVolumes []Volume
 	WorkDir       *string
-	mutated       bool
-	dryRun        bool // When set to true the user isn't prompted for configuration settings
 }
 
 // Load loads the .gots (if it exists)
@@ -95,9 +140,15 @@ func Load() *Config {
 
 // ValidateComplete validates that the configuration is complete
 func (c *Config) ValidateComplete() bool {
-	c.dryRun = true
-	c.RequestMissingConfiguration()
-	return c.mutated
+	// Make sure all fields are set
+	names := FilterSlice(
+		GetNilFieldNames(*c),
+		// Ignore Deprecated fields
+		func(field string) bool {
+			return strings.HasPrefix(field, "Deprecated")
+		})
+
+	return len(names) == 0
 }
 
 // Migrate performs any migrations that are needed

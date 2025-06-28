@@ -28,19 +28,27 @@ func TestVolumesToStringsToVolumes(t *testing.T) {
 	require.Equal(t, expected, res)
 }
 
-func Test(t *testing.T) {
+func TestGetNilFieldNames(t *testing.T) {
+	i := 0
+	names := config.GetNilFieldNames(struct {
+		a *int
+		b *int
+		c *int
+		d []string
+		e []string
+	}{
+		a: &i,
+		b: nil,
+		c: &i,
+		d: nil,
+		e: []string{},
+	})
 
-	/*
-		c := config.Config{}
-		builder := config.Builder(&c)
-		builder.Compute(&c.WorkDir, GetWorkDir(), AppTypeGo)
+	require.Equal(t, []string{"b", "d"}, names)
+}
 
-		builder.Compute(&c.ExecName, GetCmd(), AppTypeGo)
-		builder.Request(&c.ExecName, "", "Enter the name of the executable:", AppTypeGo)
+func TestFilterSlice(t *testing.T) {
+	resp := config.FilterSlice([]string{"A", "B", "C"}, func(s string) bool { return s == "B" })
 
-		builder.Request(&c.CompilePath, "", "Enter the path to the directory that contains the main.go (e.g. ./cmd/foo): ", AppTypeGo)
-
-		builder.Request(&c.Port, 80, "What TCP port is used by the application (default 80):", AppTypeGo)
-	*/
-
+	require.Equal(t, []string{"A", "C"}, resp)
 }
