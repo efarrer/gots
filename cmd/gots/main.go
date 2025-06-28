@@ -18,17 +18,17 @@ const TS_AUTHKEY_ERR = 9 // Magic number that is used to know if we need to set 
 func main() {
 	configFlag := false
 	generateFlag := false
-	runFlag := false
+	startFlag := false
 	stopFlag := false
 	flag.BoolVar(&configFlag, "config", false, "Creates the .gots configuration file, based on user input.")
 	flag.BoolVar(&generateFlag, "generate", false, "Creates the Docker files and scripts to run executable in Docker with Tailscale.")
-	flag.BoolVar(&runFlag, "run", false, "Run the command in Docker with Tailscale.")
+	flag.BoolVar(&startFlag, "start", false, "Start the command in Docker with Tailscale.")
 	flag.BoolVar(&stopFlag, "stop", false, "Stop the Docker containers.")
 	flag.Parse()
 
 	env.ValidateEnv()
 
-	if !configFlag && !runFlag && !generateFlag && !stopFlag {
+	if !configFlag && !startFlag && !generateFlag && !stopFlag {
 		flag.Usage()
 	}
 
@@ -52,7 +52,7 @@ func main() {
 	}
 
 	// Validate for Generate or Run
-	if generateFlag || runFlag || stopFlag {
+	if generateFlag || startFlag || stopFlag {
 		if cfg.ValidateComplete() {
 			fmt.Fprintf(os.Stderr, "Configuration is not complete re-run gots with -config\n")
 			return
@@ -107,7 +107,7 @@ func main() {
 	cfg.Generate("./")
 
 	// Run
-	if runFlag {
+	if startFlag {
 		stdout, stderr, err := run.RunWithOutput("./gots-run")
 		if err != nil {
 			var exitError *exec.ExitError
