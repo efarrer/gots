@@ -36,9 +36,18 @@ func main() {
 
 	// Config
 	if configFlag {
-		cfg.RequestMissingConfiguration()
-		cfg.ConfirmConfiguration()
-		cfg.Save()
+		cfg.Migrate()
+
+		err := cfg.RequestMissingConfiguration()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s", err.Error())
+			os.Exit(1)
+		}
+		err = cfg.Save()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s", err.Error())
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -52,7 +61,11 @@ func main() {
 
 	// Generate
 	if generateFlag {
-		cfg.Generate("./")
+		err := cfg.Generate("./")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s", err.Error())
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -64,7 +77,7 @@ func main() {
 	defer os.RemoveAll(tempDir)
 
 	// Create a subdirectory so the docker containers have consistent names
-	tempDir = path.Join(tempDir, cfg.ExecName)
+	tempDir = path.Join(tempDir, *cfg.ExecName)
 	err = os.Mkdir(tempDir, 0700)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to create %s %s\n", tempDir, err)

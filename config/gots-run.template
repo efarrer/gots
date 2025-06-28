@@ -12,7 +12,7 @@ if ! tailscale status --json | jq '.Peer | to_entries[] | .value | .HostName  | 
 fi
 
 pushd "{{.WorkDir}}"
-  go build ./cmd/{{.ExecName}}
+  go build {{.GoCompilePath}}
 popd
 
 if [ ! -e "./{{.ExecName}}" ]; then

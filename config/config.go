@@ -4,11 +4,12 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 	"text/template"
+
+	"github.com/efarrer/gots/config/builder"
+	"github.com/efarrer/gots/config/compute"
 )
 
 //go:embed Dockerfile.template
@@ -25,51 +26,54 @@ var gotsRunTemplate string
 
 const configPath = "./.gots"
 
+// Deref safely derefs a pointer. For nil returns the zero value
+func Deref[A any](pa *A) A {
+	if pa == nil {
+		var ret A
+		return ret
+	}
+	return *pa
+}
+
 // Volume represents a docker volume
 type Volume struct {
 	DockerDir string
 	HostDir   string
 }
 
-// Config the gots configuration
-type Config struct {
-	ExecName       string
-	ExecArgs       []string
-	CompileCommand []string
-	Port           *int
-	Funnel         *bool
-	DockerVolumes  []Volume
-	WorkDir        string
-	mutated        bool
-	dryRun         bool // When set to true the user isn't prompted for configuration settings
+func VolumesToStrings(vs []Volume) []string {
+	if vs == nil {
+		return nil
+	}
+	ret := []string{}
+	for _, v := range vs {
+		ret = append(ret, v.DockerDir, v.HostDir)
+	}
+
+	return ret
 }
 
-// GetCmd checks for a directory structure of ./cmd/<name> and if so it returns <name>. If not it returns ""
-func GetCmd() string {
-	dirPath := "./cmd/"
-	fileInfo, err := os.Stat(dirPath)
-	if err != nil {
-		return ""
+func StringsToVolumes(strs []string) []Volume {
+	ret := []Volume{}
+	for i := 0; i < len(strs); i += 2 {
+		ret = append(ret, Volume{DockerDir: strs[i], HostDir: strs[i+1]})
 	}
+	return ret
+}
 
-	if !fileInfo.IsDir() {
-		return ""
-	}
+// Config the gots configuration
+type Config struct {
+	ExecName                 *string
+	ExecArgs                 []string
+	DeprecatedCompileCommand []string `json:"CompileCommand,omitempty"` // Deprecated
 
-	var cmd string
-	err = filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() && path != dirPath { // Exclude the directory itself
-			cmd = filepath.Base(path)
-		}
-		return nil
-	})
-	if err != nil {
-		return ""
-	}
-	return cmd
+	GoCompilePath *string
+	Port          *int
+	Funnel        *bool
+	DockerVolumes []Volume
+	WorkDir       *string
+	mutated       bool
+	dryRun        bool // When set to true the user isn't prompted for configuration settings
 }
 
 // Load loads the .gots (if it exists)
@@ -85,6 +89,7 @@ func Load() *Config {
 	if err != nil {
 		return &Config{}
 	}
+
 	return &cfg
 }
 
@@ -95,219 +100,93 @@ func (c *Config) ValidateComplete() bool {
 	return c.mutated
 }
 
+// Migrate performs any migrations that are needed
+func (c *Config) Migrate() {
+	if len(c.DeprecatedCompileCommand) > 0 {
+		c.GoCompilePath = &c.DeprecatedCompileCommand[len(c.DeprecatedCompileCommand)-1]
+		c.DeprecatedCompileCommand = nil
+	}
+}
+
 // RequestMissingConfiguration prompts the user for missing configuration parameters
-func (c *Config) RequestMissingConfiguration() {
-	c.requestCurWorkDir().
-		requestExecName().
-		requestCompileCommand().
-		requestExecArgs().
-		requestPort().
-		requestFunnel().
-		requestVolumes()
-}
+func (c *Config) RequestMissingConfiguration() error {
+	// Grab the original configuration to see if anything changed
+	origConfiguration := *c
 
-func (c *Config) requestCurWorkDir() *Config {
-	if c.WorkDir != "" {
-		return c
+	b := builder.New(os.Stdin, builder.AppTypeGo)
+
+	c.Port = builder.Request(b, c.Port, 80, "What TCP port is used by the application (default 80): ", builder.AppTypeGo)
+	c.Funnel = builder.Request(b, c.Funnel, false, "Should a Tailscale funnel be started? (y/n): ", builder.AppTypeGo)
+	c.ExecName = builder.Compute(b, c.ExecName, compute.GetCmd, builder.AppTypeGo)
+	c.ExecName = builder.Request(b, c.ExecName, "", "Enter the name of the executable: ", builder.AppTypeGo)
+	c.WorkDir = builder.Compute(b, c.WorkDir, compute.Getwd, builder.AppTypeGo)
+	c.GoCompilePath = builder.Compute(b, c.GoCompilePath, compute.ComputeGoCompilePath(c.ExecName), builder.AppTypeGo)
+	c.GoCompilePath = builder.Request(b, c.GoCompilePath, "", "Enter the path to the directory that contains the main.go (e.g. ./cmd/foo): ", builder.AppTypeGo)
+	c.Port = builder.Request(b, c.Port, 80, "What TCP port is used by the application (default 80): ")
+	c.ExecArgs = builder.RequestSlice(b, c.ExecArgs, []string{},
+		fmt.Sprintf("Enter the command line arguments to pass to \"%s\". Hit enter after each argument.\n", *c.ExecName),
+		[]string{"Arg %d: "},
+		builder.AppTypeGo,
+	)
+	c.DockerVolumes = StringsToVolumes(builder.RequestSlice(b, VolumesToStrings(c.DockerVolumes), []string{},
+		fmt.Sprintf("Enter the volumes to mount in the Docker container\n"),
+		[]string{
+			"Docker dir (absolute path) %d: ",
+			"Host dir (absolute path) %d: ",
+		},
+		builder.AppTypeGo,
+	))
+
+	changed := ""
+	if Deref(origConfiguration.ExecName) != Deref(c.ExecName) {
+		changed += fmt.Sprintf("Executable: %s\n", *c.ExecName)
 	}
-	wd, err := os.Getwd()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to get working directory\n")
-		os.Exit(1)
+	if strings.Join(origConfiguration.ExecArgs, "") != strings.Join(c.ExecArgs, "") {
+		changed += fmt.Sprintf("Executable arguments: %s\n", strings.Join(c.ExecArgs, ", "))
 	}
-	c.WorkDir = wd
-
-	return c
-}
-
-func (c *Config) requestExecName() *Config {
-	if c.ExecName != "" {
-		return c
+	if Deref(origConfiguration.GoCompilePath) != Deref(c.GoCompilePath) {
+		changed += fmt.Sprintf("Go main.go path %s\n", *c.GoCompilePath)
 	}
-	c.mutated = true
-	if c.dryRun {
-		return c
+	if Deref(origConfiguration.Port) != Deref(c.Port) {
+		changed += fmt.Sprintf("Listening port %d\n", *c.Port)
 	}
-
-	// Try and auto discover the ExecName
-	c.ExecName = GetCmd()
-	if c.ExecName != "" {
-		return c
+	if Deref(origConfiguration.Funnel) != Deref(c.Funnel) {
+		changed += fmt.Sprintf("Start a Tailscale funnel: %t\n", *c.Funnel)
 	}
-
-	fmt.Print("Enter the name of the executable: ")
-	fmt.Scanf("%s", &c.ExecName)
-
-	fmt.Print("Enter the path to the directory that contains the main.go (e.g. ./cmd/foo): ")
-	compilePath := ""
-	fmt.Scanf("%s", &compilePath)
-	c.CompileCommand = []string{"go", "build", compilePath}
-	return c
-}
-
-func (c *Config) requestCompileCommand() *Config {
-	if c.CompileCommand != nil {
-		return c
-	}
-	c.mutated = true
-	if c.dryRun {
-		return c
-	}
-
-	cmdName := GetCmd()
-	var compileCommand []string = nil
-	if cmdName != "" {
-		compileCommand = []string{"go", "build", "./cmd/" + cmdName}
-	}
-
-	c.CompileCommand = compileCommand
-	return c
-}
-
-func (c *Config) requestExecArgs() *Config {
-	if c.ExecArgs != nil {
-		return c
-	}
-	c.mutated = true
-	if c.dryRun {
-		return c
-	}
-
-	c.ExecArgs = []string{}
-	fmt.Printf("Enter the command line arguments to pass to \"%s\". Hit enter after each argument.\n", c.ExecName)
-	for i := 0; true; i++ {
-		fmt.Printf("Arg %d: ", i)
-		args := ""
-		fmt.Scanf("%s", &args)
-		if args == "" {
-			return c
+	if fmt.Sprintf("%v", origConfiguration.DockerVolumes) != fmt.Sprintf("%v", c.DockerVolumes) {
+		for _, vol := range c.DockerVolumes {
+			changed += fmt.Sprintf("Volume: %s:%s\n", vol.DockerDir, vol.HostDir)
 		}
-		c.ExecArgs = append(c.ExecArgs, args)
-	}
-	return c
-}
-
-func (c *Config) requestPort() *Config {
-	if c.Port != nil {
-		return c
-	}
-	c.mutated = true
-	if c.dryRun {
-		return c
 	}
 
-	fmt.Print("What TCP port is used by the application (default 80): ")
-	port := 80
-	fmt.Scanf("%d", &port)
-	c.Port = &port
-	return c
-}
-
-func (c *Config) requestFunnel() *Config {
-	if c.Funnel != nil {
-		return c
-	}
-	c.mutated = true
-	if c.dryRun {
-		return c
-	}
-
-	fmt.Print("Should a Tailscale funnel be started? (y/n): ")
-	yOrN := ""
-	fmt.Scanf("%s", &yOrN)
-	if strings.HasPrefix(strings.ToLower(yOrN), "y") {
-		val := true
-		c.Funnel = &val
-	} else {
-		val := false
-		c.Funnel = &val
-	}
-	return c
-}
-
-func (c *Config) requestVolumes() *Config {
-	if c.DockerVolumes != nil {
-		return c
-	}
-	c.mutated = true
-	if c.dryRun {
-		return c
-	}
-
-	c.DockerVolumes = []Volume{}
-	fmt.Printf("Enter the volumes to mount in the Docker container\n")
-	for i := 0; true; i++ {
-		fmt.Printf("Docker dir (absolute path) %d: ", i)
-		dockerDir := ""
-		fmt.Scanf("%s", &dockerDir)
-		if dockerDir == "" {
-			return c
+	if changed != "" {
+		fmt.Printf("\n**********************************\n")
+		fmt.Println(changed)
+		fmt.Printf("**********************************\n\n")
+		fmt.Print("Are these changes correct? (y/n): ")
+		yOrN := ""
+		fmt.Scanf("%s", &yOrN)
+		if !strings.HasPrefix(strings.ToLower(yOrN), "y") {
+			return fmt.Errorf("Configuration is not correct. Cowardly quitting\n")
 		}
-
-		fmt.Printf("Host dir (absolute path) %d: ", i)
-		hostDir := ""
-		fmt.Scanf("%s", &hostDir)
-		if hostDir == "" {
-			return c
-		}
-		c.DockerVolumes = append(c.DockerVolumes, Volume{DockerDir: dockerDir, HostDir: hostDir})
-	}
-	return c
-}
-
-// String outputs a human friendly representation of the configuration.
-func (c *Config) String() {
-	fmt.Printf("Executable: %s\n", c.ExecName)
-	fmt.Printf("Executable arguments: %s\n", strings.Join(c.ExecArgs, ", "))
-	fmt.Printf("Command to compile %s: %s\n", c.ExecName, strings.Join(c.CompileCommand, " "))
-	fmt.Printf("Start a Tailscale funnel: %t\n", *c.Funnel)
-	for _, vol := range c.DockerVolumes {
-		fmt.Printf("Volume: %s:%s\n", vol.DockerDir, vol.HostDir)
-	}
-}
-
-// ConfirmConfiguration prints the configuraiton and asks the user if it is correct.
-func (c *Config) ConfirmConfiguration() {
-	if !c.mutated {
-		return
-	}
-	if c.dryRun {
-		return
 	}
 
-	fmt.Printf("\n\n**********************************\n\n")
-	c.String()
-
-	fmt.Print("Are these correct? (y/n): ")
-	yOrN := ""
-	fmt.Scanf("%s", &yOrN)
-	if !strings.HasPrefix(strings.ToLower(yOrN), "y") {
-		fmt.Fprintf(os.Stderr, "Configuration is not correct. Cowardly quitting\n")
-		os.Exit(1)
-	}
+	return nil
 }
 
 // Save saves the configuration to the .gots file
-func (c *Config) Save() {
-	if !c.mutated {
-		return
-	}
-	if c.dryRun {
-		return
-	}
-
+func (c *Config) Save() error {
 	jsonData, err := json.MarshalIndent(*c, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to JSONify config\n")
-		os.Exit(1)
+		return fmt.Errorf("Unable to JSONify config\n")
 	}
 	err = os.WriteFile(configPath, jsonData, 0644)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to save config\n")
-		os.Exit(1)
+		return fmt.Errorf("Unable to save config\n")
 	}
 
 	fmt.Printf("\nConfig saved to %s\n", configPath)
+	return nil
 }
 
 type templates struct {
@@ -317,7 +196,7 @@ type templates struct {
 }
 
 // Generate creates all files needed to execute the executable in docker (Dockerfile, docker-compose.yaml, etc.)
-func (c *Config) Generate(dstDir string) {
+func (c *Config) Generate(dstDir string) error {
 	for _, t := range []templates{
 		{
 			dstFileName:     "Dockerfile",
@@ -339,29 +218,27 @@ func (c *Config) Generate(dstDir string) {
 	} {
 		file, err := os.Create(t.dstFileName)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to open %s\n", t.dstFileName)
-			os.Exit(1)
+			return fmt.Errorf("Unable to open %s\n", t.dstFileName)
 		}
 		defer file.Close()
 
 		templ, err := template.New(t.dstFileName).Parse(t.srcTemplate)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to parse %s\n", t.srcTemplateName)
-			os.Exit(1)
+			return fmt.Errorf("Unable to parse %s\n", t.srcTemplateName)
 		}
 
 		err = templ.Execute(file, *c)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Unable execute %s\n", t.srcTemplateName)
-			os.Exit(1)
+			return fmt.Errorf("Unable execute %s\n", t.srcTemplateName)
 		}
 
 		if t.dstFileName == "gots-run" {
 			os.Chmod(t.dstFileName, 0755)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Unable chmod %s\n", t.dstFileName)
-				os.Exit(1)
+				return fmt.Errorf("Unable chmod %s\n", t.dstFileName)
 			}
 		}
 	}
+
+	return nil
 }
