@@ -42,11 +42,10 @@ func main() {
 	}
 
 	cfg := config.Load()
+	cfg.Migrate()
 
 	// Config
 	if configFlag {
-		cfg.Migrate()
-
 		err := cfg.RequestMissingConfiguration()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s", err.Error())
