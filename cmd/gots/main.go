@@ -21,16 +21,18 @@ func main() {
 	startFlag := false
 	stopFlag := false
 	restartFlag := false
+	updateFlag := false
 	flag.BoolVar(&configFlag, "config", false, "Creates the .gots configuration file, based on user input.")
 	flag.BoolVar(&generateFlag, "generate", false, "Creates the Docker files and scripts to run executable in Docker with Tailscale.")
 	flag.BoolVar(&startFlag, "start", false, "Start the command in Docker with Tailscale.")
 	flag.BoolVar(&stopFlag, "stop", false, "Stop the Docker containers.")
 	flag.BoolVar(&restartFlag, "restart", false, "Stop then start the Docker containers..")
+	flag.BoolVar(&updateFlag, "update", false, "Pull the latest Docker containers then stop and start the Docker containers..")
 	flag.Parse()
 
 	env.ValidateEnv()
 
-	if restartFlag {
+	if restartFlag || updateFlag {
 		startFlag = true
 		stopFlag = true
 	}
@@ -58,13 +60,25 @@ func main() {
 		return
 	}
 
-	// Validate for Generate or Run
-	if generateFlag || startFlag || stopFlag {
+	// Validate for generate or start or update
+	if generateFlag || startFlag || updateFlag {
 		if !cfg.ValidateComplete() {
 			fmt.Fprintf(os.Stderr, "Configuration is not complete re-run gots with -config\n")
 			return
 		}
 	}
+
+	// Pull for update
+	if updateFlag {
+		for _, image := range []string{"ubuntu:latest", "tailscale/tailscale:latest"} {
+			_, _, err := run.RunWithOutput("docker", "pull", image)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "unable to pull %s\n", image)
+				return
+			}
+		}
+	}
+	return
 
 	// Generate
 	if generateFlag {
@@ -113,7 +127,7 @@ func main() {
 	// Generate files in temp dir
 	cfg.Generate("./")
 
-	// Run
+	// Start
 	if startFlag {
 		stdout, stderr, err := run.RunWithOutput("./gots-run")
 		if err != nil {
