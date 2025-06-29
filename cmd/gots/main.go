@@ -20,13 +20,20 @@ func main() {
 	generateFlag := false
 	startFlag := false
 	stopFlag := false
+	restartFlag := false
 	flag.BoolVar(&configFlag, "config", false, "Creates the .gots configuration file, based on user input.")
 	flag.BoolVar(&generateFlag, "generate", false, "Creates the Docker files and scripts to run executable in Docker with Tailscale.")
 	flag.BoolVar(&startFlag, "start", false, "Start the command in Docker with Tailscale.")
 	flag.BoolVar(&stopFlag, "stop", false, "Stop the Docker containers.")
+	flag.BoolVar(&restartFlag, "restart", false, "Stop then start the Docker containers..")
 	flag.Parse()
 
 	env.ValidateEnv()
+
+	if restartFlag {
+		startFlag = true
+		stopFlag = true
+	}
 
 	if !configFlag && !startFlag && !generateFlag && !stopFlag {
 		flag.Usage()
