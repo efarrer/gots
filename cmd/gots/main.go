@@ -78,7 +78,6 @@ func main() {
 			}
 		}
 	}
-	return
 
 	// Generate
 	if generateFlag {
