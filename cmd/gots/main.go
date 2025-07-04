@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strings"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/efarrer/gots/config"
 	"github.com/efarrer/gots/env"
 	"github.com/efarrer/gots/run"
@@ -15,14 +17,16 @@ import (
 
 const TS_AUTHKEY_ERR = 9 // Magic number that is used to know if we need to set TS_AUTHKEY (see config/gots-run.template)
 
+var targetTypes = mapset.NewSet[string]("go")
+
 func main() {
-	configFlag := false
+	configType := ""
 	generateFlag := false
 	startFlag := false
 	stopFlag := false
 	restartFlag := false
 	updateFlag := false
-	flag.BoolVar(&configFlag, "config", false, "Creates the .gots configuration file, based on user input.")
+	flag.StringVar(&configType, "config", "", fmt.Sprintf("Creates the .gots configuration file for the given target type. Valid target types are: %s", targetTypes.ToSlice()))
 	flag.BoolVar(&generateFlag, "generate", false, "Creates the Docker files and scripts to run executable in Docker with Tailscale.")
 	flag.BoolVar(&startFlag, "start", false, "Start the command in Docker with Tailscale.")
 	flag.BoolVar(&stopFlag, "stop", false, "Stop the Docker containers.")
@@ -36,16 +40,19 @@ func main() {
 		startFlag = true
 		stopFlag = true
 	}
+	cfg := config.Load()
+	if configType == "" {
+		configType = cfg.Type
+	}
 
-	if !configFlag && !startFlag && !generateFlag && !stopFlag {
+	if configType == "" && !startFlag && !generateFlag && !stopFlag {
 		flag.Usage()
 	}
 
-	cfg := config.Load()
 	cfg.Migrate()
 
 	// Config
-	if configFlag {
+	if targetTypes.Contains(strings.ToLower(configType)) {
 		err := cfg.RequestMissingConfiguration()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s", err.Error())

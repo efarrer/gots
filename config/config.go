@@ -110,6 +110,7 @@ func FilterSlice[T any](slice []T, filter func(T) bool) []T {
 
 // Config the gots configuration
 type Config struct {
+	Type                     string
 	ExecName                 *string
 	ExecArgs                 []string
 	DeprecatedCompileCommand []string `json:"CompileCommand,omitempty"` // Deprecated
@@ -155,6 +156,9 @@ func (c *Config) Migrate() {
 	if len(c.DeprecatedCompileCommand) > 0 {
 		c.GoCompilePath = &c.DeprecatedCompileCommand[len(c.DeprecatedCompileCommand)-1]
 		c.DeprecatedCompileCommand = nil
+	}
+	if c.Type == "" {
+		c.Type = "go"
 	}
 }
 
