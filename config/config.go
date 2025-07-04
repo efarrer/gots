@@ -113,12 +113,11 @@ type Config struct {
 	ExecName                 *string
 	ExecArgs                 []string
 	DeprecatedCompileCommand []string `json:"CompileCommand,omitempty"` // Deprecated
-
-	GoCompilePath *string
-	Port          *int
-	Funnel        *bool
-	DockerVolumes []Volume
-	WorkDir       *string
+	GoCompilePath            *string
+	Port                     *int
+	Funnel                   *bool
+	DockerVolumes            []Volume
+	WorkDir                  *string
 }
 
 // Load loads the .gots (if it exists)
