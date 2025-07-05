@@ -12,10 +12,9 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 )
 
-type AppType string
-
 const (
-	AppTypeGo = "go"
+	AppTypeGo          = "go"
+	AppTypeDockerImage = "image"
 )
 
 // GetFieldValueByName retrieves the field value from a struct by name

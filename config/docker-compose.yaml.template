@@ -1,6 +1,6 @@
 ---
 services:
-  ts-{{.ExecName}}:
+  ts-{{.DockerHostname}}:
     image: tailscale/tailscale:latest
     hostname: {{.DockerHostname}}
     environment:
@@ -19,10 +19,10 @@ services:
     dns:
       - 100.100.100.100  # For tailnet address (<mach>.<tailnet>.ts.net) lookups.
       - 8.8.8.8  # For external lookups.
-  {{.ExecName}}:
+  {{.DockerHostname}}:
     image: {{.DockerImage}}
-    network_mode: service:ts-{{.ExecName}}
+    network_mode: service:ts-{{.DockerHostname}}
     depends_on:
-      - ts-{{.ExecName}}
+      - ts-{{.DockerHostname}}
     volumes:{{range $index, $arg := .DockerVolumes}}
       - {{$arg.HostDir}}:{{$arg.DockerDir}}{{end}}

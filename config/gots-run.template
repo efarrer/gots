@@ -4,22 +4,28 @@ if [ "$1" == "-stop" ]; then
   exit 0
 fi
 
-if ! tailscale status --json | jq '.Peer | to_entries[] | .value | .HostName  | contains("{{.ExecName}}")' | grep true > /dev/null; then
+if ! tailscale status --json | jq '.Peer | to_entries[] | .value | .HostName  | contains("{{.DockerHostname}}")' | grep true > /dev/null; then
   if [ -z "$TS_AUTHKEY" ]; then
-    echo "TS_AUTHKEY environment variable must be set when creating {{.ExecName}}."
+    echo "TS_AUTHKEY environment variable must be set when creating {{.DockerHostname}}."
     exit 9 # Magic number that is used to know if we need to set TS_AUTHKEY (see main.go)
   fi
 fi
 
-pushd "{{.WorkDir}}"
-  go build {{.GoCompilePath}}
-popd
-
-if [ ! -e "./{{.ExecName}}" ]; then
-  cp "{{.WorkDir}}/{{.ExecName}}" ./
+if [ "{{.Type}}" == "go" ]; then
+  pushd "{{.WorkDir}}"
+    go build {{.GoCompilePathSafe}}
+  popd
 fi
 
-docker build --network=host -t {{.ExecName}} .
+if [ "{{.Type}}" == "go" ]; then
+  if [ ! -e "./{{.ExecName}}" ]; then
+    cp "{{.WorkDir}}/{{.ExecName}}" ./
+  fi
+fi
+
+if [ "{{.Type}}" == "go" ]; then
+  docker build --network=host -t {{.DockerImage}} .
+fi
 
 docker compose stop
 

@@ -111,16 +111,20 @@ func FilterSlice[T any](slice []T, filter func(T) bool) []T {
 // Config the gots configuration
 type Config struct {
 	Type                     string
-	DockerImage              *string  `gots:"go,image"`
-	DockerHostname           *string  `gots:"go,image"`
-	ExecName                 *string  `gots:"go"`
-	ExecArgs                 []string `gots:"go"`
+	DockerImage              *string  `gots:"go,image" json:"DockerImage,omitempty"`
+	DockerHostname           *string  `gots:"go,image" json:"DockerHostname,omitempty"`
+	ExecName                 *string  `gots:"go" json:"ExecName,omitempty"`
+	ExecArgs                 []string `gots:"go" json:"ExecArgs,omitempty"`
 	DeprecatedCompileCommand []string `json:"CompileCommand,omitempty"` // Deprecated
-	GoCompilePath            *string  `gots:"go"`
-	Port                     *int     `gots:"go,image"`
-	Funnel                   *bool    `gots:"go,image"`
-	DockerVolumes            []Volume `gots:"go,image"`
-	WorkDir                  *string  `gots:"go,image"`
+	GoCompilePath            *string  `gots:"go" json:"GoCompilePath,omitempty"`
+	Port                     *int     `gots:"go,image" json:"Port,omitempty"`
+	Funnel                   *bool    `gots:"go,image" json:"Funnel,omitempty"`
+	DockerVolumes            []Volume `gots:"go,image" json:"DockerVolumes,omitempty"`
+	WorkDir                  *string  `gots:"go,image" json:"WorkDir,omitempty"`
+}
+
+func (c Config) GoCompilePathSafe() string {
+	return Deref(c.GoCompilePath)
 }
 
 // Load loads the .gots (if it exists)
@@ -189,6 +193,8 @@ func (c *Config) RequestMissingConfiguration() error {
 		c.DockerHostname = c.ExecName
 		c.DockerImage = c.ExecName
 	}
+	c.DockerHostname = builder.Request(b, c, "DockerHostname", "", "Enter the hostname to use in the docker container: ")
+	c.DockerImage = builder.Request(b, c, "DockerImage", "", "Enter the name of the docker image to execute: ")
 	c.WorkDir = builder.Compute(b, c, "WorkDir", compute.Getwd)
 	c.GoCompilePath = builder.Compute(b, c, "GoCompilePath", compute.ComputeGoCompilePath(c.ExecName))
 	c.GoCompilePath = builder.Request(b, c, "GoCompilePath", "", "Enter the path to the directory that contains the main.go (e.g. ./cmd/foo): ")
@@ -213,6 +219,9 @@ func (c *Config) RequestMissingConfiguration() error {
 	}
 
 	changed := ""
+	if Deref(origConfiguration.DockerImage) != Deref(c.DockerImage) {
+		changed += fmt.Sprintf("Docker image: %s\n", *c.DockerImage)
+	}
 	if Deref(origConfiguration.ExecName) != Deref(c.ExecName) {
 		changed += fmt.Sprintf("Executable: %s\n", *c.ExecName)
 	}
@@ -304,7 +313,7 @@ func (c *Config) Generate(dstDir string) error {
 
 		err = templ.Execute(file, *c)
 		if err != nil {
-			return fmt.Errorf("Unable execute %s\n", t.srcTemplateName)
+			return fmt.Errorf("Unable to execute template %s %w\n", t.srcTemplateName, err)
 		}
 
 		if t.dstFileName == "gots-run" {

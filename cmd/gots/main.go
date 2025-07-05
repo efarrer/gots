@@ -41,9 +41,6 @@ func main() {
 		stopFlag = true
 	}
 	cfg := config.Load()
-	if configType == "" {
-		configType = cfg.Type
-	}
 
 	if configType == "" && !startFlag && !generateFlag && !stopFlag {
 		flag.Usage()
@@ -103,7 +100,7 @@ func main() {
 	defer os.RemoveAll(tempDir)
 
 	// Create a subdirectory so the docker containers have consistent names
-	tempDir = path.Join(tempDir, *cfg.ExecName)
+	tempDir = path.Join(tempDir, *cfg.DockerHostname)
 	err = os.Mkdir(tempDir, 0700)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to create %s %s\n", tempDir, err)
