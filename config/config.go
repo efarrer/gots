@@ -111,16 +111,16 @@ func FilterSlice[T any](slice []T, filter func(T) bool) []T {
 // Config the gots configuration
 type Config struct {
 	Type                     string
-	DockerImage              *string  `gots:"go,image" json:"DockerImage,omitempty"`
-	DockerHostname           *string  `gots:"go,image" json:"DockerHostname,omitempty"`
+	DockerImage              *string  `gots:"go,dockerimage" json:"DockerImage,omitempty"`
+	DockerHostname           *string  `gots:"go,dockerimage" json:"DockerHostname,omitempty"`
 	ExecName                 *string  `gots:"go" json:"ExecName,omitempty"`
 	ExecArgs                 []string `gots:"go" json:"ExecArgs,omitempty"`
 	DeprecatedCompileCommand []string `json:"CompileCommand,omitempty"` // Deprecated
 	GoCompilePath            *string  `gots:"go" json:"GoCompilePath,omitempty"`
-	Port                     *int     `gots:"go,image" json:"Port,omitempty"`
-	Funnel                   *bool    `gots:"go,image" json:"Funnel,omitempty"`
-	DockerVolumes            []Volume `gots:"go,image" json:"DockerVolumes,omitempty"`
-	WorkDir                  *string  `gots:"go,image" json:"WorkDir,omitempty"`
+	Port                     *int     `gots:"go,dockerimage" json:"Port,omitempty"`
+	Funnel                   *bool    `gots:"go,dockerimage" json:"Funnel,omitempty"`
+	DockerVolumes            []Volume `gots:"go,dockerimage" json:"DockerVolumes,omitempty"`
+	WorkDir                  *string  `gots:"go,dockerimage" json:"WorkDir,omitempty"`
 }
 
 func (c Config) GoCompilePathSafe() string {
@@ -176,6 +176,9 @@ func (c *Config) Migrate() {
 	}
 	if c.Type == builder.AppTypeGo && c.DockerHostname == nil {
 		c.DockerHostname = c.ExecName
+	}
+	if c.Type == "image" {
+		c.Type = builder.AppTypeDockerImage
 	}
 }
 
