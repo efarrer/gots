@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+
+	mapset "github.com/deckarep/golang-set/v2"
 )
 
 type AppType string
@@ -16,16 +18,92 @@ const (
 	AppTypeGo = "go"
 )
 
+// GetFieldValueByName retrieves the field value from a struct by name
+func GetFieldValueByName[T any](s interface{}, fieldName string) T {
+	var zeroValue T // Get the zero value of type T
+
+	// Get the reflect.Value of the input.
+	val := reflect.ValueOf(s)
+
+	// If it's a pointer, dereference it to get the underlying struct value.
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	// Ensure we are dealing with a struct.
+	if val.Kind() != reflect.Struct {
+		panic(fmt.Sprintf("Warning: Input is not a struct or a pointer to a struct. Got %v\n", val.Kind()))
+		return zeroValue
+	}
+
+	// Get the field by its name.
+	field := val.FieldByName(fieldName)
+
+	// Check if the field was found and is valid.
+	if !field.IsValid() {
+		panic(fmt.Sprintf("Warning: Field '%s' not found or is unexported in the struct.\n", fieldName))
+		return zeroValue
+	}
+
+	// Check if the field's type is assignable to the generic type T.
+	// This is where generics provide compile-time type safety.
+	if !field.CanConvert(reflect.TypeOf(zeroValue)) {
+		panic(fmt.Sprintf("Warning: Field '%s' type (%v) is not assignable to expected type %T.\n",
+			fieldName, field.Type(), zeroValue))
+		return zeroValue
+	}
+
+	// Convert the field's value to the generic type T and return it.
+	return field.Convert(reflect.TypeOf(zeroValue)).Interface().(T)
+}
+
+// GetGotsTags returns the value of the "gots" tags.
+func GetFieldTags(s interface{}, fieldName string) mapset.Set[string] {
+	tags := mapset.NewSet[string]()
+
+	// Get the reflect.Value of the struct
+	val := reflect.ValueOf(s)
+
+	// If it's a pointer, dereference it
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	// Ensure we are dealing with a struct
+	if val.Kind() != reflect.Struct {
+		panic(fmt.Sprintf("Warning: Input is not a struct or a pointer to a struct. Got %v\n", val.Kind()))
+		return tags
+	}
+
+	// Get the reflect.Type of the struct
+	typ := val.Type()
+
+	// Iterate over the fields of the struct
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if field.Name == fieldName {
+			// Found the field, now extract its tags
+			if tagValue, ok := field.Tag.Lookup("gots"); ok {
+				tags.Append(strings.Split(tagValue, ",")...)
+			}
+			return tags
+		}
+	}
+
+	panic(fmt.Sprintf("Warning: Field '%s' not found in the struct.\n", fieldName))
+	return tags
+}
+
 // A Builder sets the needed files in a config.Config
 type Builder struct {
-	at          AppType
+	at          string
 	needsConfig bool
 	dryRun      bool
 	input       io.Reader
 }
 
-// New creates a new Builder for the given AppType
-func New(reader io.Reader, at AppType) *Builder {
+// New creates a new Builder for the given app type
+func New(reader io.Reader, at string) *Builder {
 	return &Builder{
 		at:          at,
 		needsConfig: false,
@@ -44,7 +122,9 @@ func (b *Builder) NeedsConfig() bool {
 }
 
 // Compute a value. Return nil if it can't be computed
-func Compute[V comparable](b *Builder, val *V, fn func() (V, error), ats ...AppType) *V {
+func Compute[V comparable](b *Builder, strct any, fldName string, fn func() (V, error)) *V {
+	val := GetFieldValueByName[*V](strct, fldName)
+	ats := GetFieldTags(strct, fldName)
 	if val != nil {
 		return val
 	}
@@ -53,36 +133,42 @@ func Compute[V comparable](b *Builder, val *V, fn func() (V, error), ats ...AppT
 		return val
 	}
 
-	for _, at := range ats {
-		if at == b.at {
-			v, err := fn()
-			if err != nil {
-				return val
-			}
-			val = &v
+	if ats.Contains(b.at) {
+		v, err := fn()
+		if err != nil {
 			return val
 		}
+		val = &v
+		return val
 	}
 	return val
 }
 
 // Request the user provide a value
-func Request[V any](b *Builder, val *V, def V, request string, ats ...AppType) *V {
+func Request[V any](b *Builder, strct any, fldName string, def V, request string) *V {
+	val := GetFieldValueByName[*V](strct, fldName)
+	ats := GetFieldTags(strct, fldName)
 	var vals []V
 	if val == nil {
 		vals = nil
 	} else {
 		vals = append(vals, *val)
 	}
-	res := RequestSlice(b, vals, []V{def}, request, nil, ats...)
+	res := RequestSliceRaw(b, vals, []V{def}, request, nil, ats)
 	if len(res) == 1 {
 		return &res[0]
 	}
 	return nil
 }
 
-// Request the user provide a slice of value
-func RequestSlice[V any](b *Builder, vals []V, def []V, request string, subrequests []string, ats ...AppType) []V {
+// RequestSlice asks the user provide a slice of value
+func RequestSlice[V any](b *Builder, strct any, fldName string, def []V, request string, subrequests []string) []V {
+	vals := GetFieldValueByName[[]V](strct, fldName)
+	ats := GetFieldTags(strct, fldName)
+	return RequestSliceRaw(b, vals, def, request, subrequests, ats)
+}
+
+func RequestSliceRaw[V any](b *Builder, vals []V, def []V, request string, subrequests []string, ats mapset.Set[string]) []V {
 	if vals != nil {
 		return vals
 	}
@@ -91,14 +177,7 @@ func RequestSlice[V any](b *Builder, vals []V, def []V, request string, subreque
 		return vals
 	}
 
-	matches := false
-	for _, at := range ats {
-		if at == b.at {
-			matches = true
-			break
-		}
-	}
-	if !matches {
+	if !ats.Contains(b.at) {
 		return vals
 	}
 

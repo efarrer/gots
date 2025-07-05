@@ -2,7 +2,7 @@
 services:
   ts-{{.ExecName}}:
     image: tailscale/tailscale:latest
-    hostname: {{.ExecName}}
+    hostname: {{.DockerHostname}}
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
@@ -20,7 +20,7 @@ services:
       - 100.100.100.100  # For tailnet address (<mach>.<tailnet>.ts.net) lookups.
       - 8.8.8.8  # For external lookups.
   {{.ExecName}}:
-    image: {{.ExecName}}
+    image: {{.DockerImage}}
     network_mode: service:ts-{{.ExecName}}
     depends_on:
       - ts-{{.ExecName}}

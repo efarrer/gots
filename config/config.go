@@ -111,14 +111,16 @@ func FilterSlice[T any](slice []T, filter func(T) bool) []T {
 // Config the gots configuration
 type Config struct {
 	Type                     string
-	ExecName                 *string
-	ExecArgs                 []string
+	DockerImage              *string  `gots:"go,image"`
+	DockerHostname           *string  `gots:"go,image"`
+	ExecName                 *string  `gots:"go"`
+	ExecArgs                 []string `gots:"go"`
 	DeprecatedCompileCommand []string `json:"CompileCommand,omitempty"` // Deprecated
-	GoCompilePath            *string
-	Port                     *int
-	Funnel                   *bool
-	DockerVolumes            []Volume
-	WorkDir                  *string
+	GoCompilePath            *string  `gots:"go"`
+	Port                     *int     `gots:"go,image"`
+	Funnel                   *bool    `gots:"go,image"`
+	DockerVolumes            []Volume `gots:"go,image"`
+	WorkDir                  *string  `gots:"go,image"`
 }
 
 // Load loads the .gots (if it exists)
@@ -143,9 +145,12 @@ func (c *Config) ValidateComplete() bool {
 	// Make sure all fields are set
 	names := FilterSlice(
 		GetNilFieldNames(*c),
-		// Ignore Deprecated fields
 		func(field string) bool {
-			return strings.HasPrefix(field, "Deprecated")
+			// Ignore fields that aren't for this app type
+			if !builder.GetFieldTags(c, field).Contains(c.Type) {
+				return true
+			}
+			return false
 		})
 
 	return len(names) == 0
@@ -158,7 +163,15 @@ func (c *Config) Migrate() {
 		c.DeprecatedCompileCommand = nil
 	}
 	if c.Type == "" {
-		c.Type = "go"
+		c.Type = builder.AppTypeGo
+	}
+
+	// For go both the DockerImage and the DockerHostname are the same as the exec name
+	if c.Type == builder.AppTypeGo && c.DockerImage == nil {
+		c.DockerImage = c.ExecName
+	}
+	if c.Type == builder.AppTypeGo && c.DockerHostname == nil {
+		c.DockerHostname = c.ExecName
 	}
 }
 
@@ -167,29 +180,37 @@ func (c *Config) RequestMissingConfiguration() error {
 	// Grab the original configuration to see if anything changed
 	origConfiguration := *c
 
-	b := builder.New(os.Stdin, builder.AppTypeGo)
+	b := builder.New(os.Stdin, c.Type)
 
-	c.Port = builder.Request(b, c.Port, 80, "What TCP port is used by the application (default 80): ", builder.AppTypeGo)
-	c.Funnel = builder.Request(b, c.Funnel, false, "Should a Tailscale funnel be started? (y/n): ", builder.AppTypeGo)
-	c.ExecName = builder.Compute(b, c.ExecName, compute.GetCmd, builder.AppTypeGo)
-	c.ExecName = builder.Request(b, c.ExecName, "", "Enter the name of the executable: ", builder.AppTypeGo)
-	c.WorkDir = builder.Compute(b, c.WorkDir, compute.Getwd, builder.AppTypeGo)
-	c.GoCompilePath = builder.Compute(b, c.GoCompilePath, compute.ComputeGoCompilePath(c.ExecName), builder.AppTypeGo)
-	c.GoCompilePath = builder.Request(b, c.GoCompilePath, "", "Enter the path to the directory that contains the main.go (e.g. ./cmd/foo): ", builder.AppTypeGo)
-	c.Port = builder.Request(b, c.Port, 80, "What TCP port is used by the application (default 80): ")
-	c.ExecArgs = builder.RequestSlice(b, c.ExecArgs, []string{},
-		fmt.Sprintf("Enter the command line arguments to pass to \"%s\". Hit enter after each argument.\n", *c.ExecName),
+	c.ExecName = builder.Compute(b, c, "ExecName", compute.GetCmd)
+	c.ExecName = builder.Request[string](b, c, "ExecName", "", "Enter the name of the executable: ")
+	// For go both the DockerImage and the DockerHostname are the same as the exec name
+	if c.Type == builder.AppTypeGo {
+		c.DockerHostname = c.ExecName
+		c.DockerImage = c.ExecName
+	}
+	c.WorkDir = builder.Compute(b, c, "WorkDir", compute.Getwd)
+	c.GoCompilePath = builder.Compute(b, c, "GoCompilePath", compute.ComputeGoCompilePath(c.ExecName))
+	c.GoCompilePath = builder.Request(b, c, "GoCompilePath", "", "Enter the path to the directory that contains the main.go (e.g. ./cmd/foo): ")
+	c.Port = builder.Request[int](b, c, "Port", 80, "What TCP port is used by the application (default 80): ")
+	c.ExecArgs = builder.RequestSlice(b, c, "ExecArgs", []string{},
+		fmt.Sprintf("Enter the command line arguments to pass to \"%s\". Hit enter after each argument.\n", Deref(c.ExecName)),
 		[]string{"Arg %d: "},
-		builder.AppTypeGo,
 	)
-	c.DockerVolumes = StringsToVolumes(builder.RequestSlice(b, VolumesToStrings(c.DockerVolumes), []string{},
-		fmt.Sprintf("Enter the volumes to mount in the Docker container\n"),
-		[]string{
-			"Docker dir (absolute path) %d: ",
-			"Host dir (absolute path) %d: ",
-		},
-		builder.AppTypeGo,
-	))
+	c.Funnel = builder.Request(b, c, "Funnel", false, "Should a Tailscale funnel be started? (y/n): ")
+
+	// DockerVolumes is special in that we want to use a struct not []string so the docker/host paths are unambiguous
+	{
+		ats := builder.GetFieldTags(c, "DockerVolumes")
+		c.DockerVolumes = StringsToVolumes(builder.RequestSliceRaw(b, VolumesToStrings(c.DockerVolumes), []string{},
+			fmt.Sprintf("Enter the volumes to mount in the Docker container\n"),
+			[]string{
+				"Docker dir (absolute path) %d: ",
+				"Host dir (absolute path) %d: ",
+			},
+			ats,
+		))
+	}
 
 	changed := ""
 	if Deref(origConfiguration.ExecName) != Deref(c.ExecName) {
