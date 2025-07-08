@@ -17,7 +17,7 @@ import (
 
 const TS_AUTHKEY_ERR = 9 // Magic number that is used to know if we need to set TS_AUTHKEY (see config/gots-run.template)
 
-var targetTypes = mapset.NewSet[string]("go", "dockerimage")
+var targetTypes = mapset.NewSet[string]("go", "dockerimage", "dockerfile")
 
 func main() {
 	configType := ""
@@ -54,6 +54,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Unrecognized configuration target type %s\n", configType)
 			return
 		}
+		cfg.Type = strings.ToLower(configType)
 		err := cfg.RequestMissingConfiguration()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s", err.Error())

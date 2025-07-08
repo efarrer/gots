@@ -15,6 +15,7 @@ import (
 const (
 	AppTypeGo          = "go"
 	AppTypeDockerImage = "dockerimage"
+	AppTypeDockerFile  = "dockerfile"
 )
 
 // GetFieldValueByName retrieves the field value from a struct by name

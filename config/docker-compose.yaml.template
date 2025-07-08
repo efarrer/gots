@@ -24,5 +24,7 @@ services:
     network_mode: service:ts-{{.DockerHostname}}
     depends_on:
       - ts-{{.DockerHostname}}
+{{if .DockerVolumes}}
     volumes:{{range $index, $arg := .DockerVolumes}}
       - {{$arg.HostDir}}:{{$arg.DockerDir}}{{end}}
+{{end}}

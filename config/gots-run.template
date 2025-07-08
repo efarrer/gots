@@ -23,6 +23,13 @@ if [ "{{.Type}}" == "go" ]; then
   fi
 fi
 
+# Note that this builds the Dockerfile in the source directory not the one that we generate for Go programs
+if [ "{{.Type}}" == "dockerfile" ]; then
+  pushd "{{.WorkDir}}"
+    docker build --network=host -t {{.DockerImage}} .
+  popd
+fi
+
 if [ "{{.Type}}" == "go" ]; then
   docker build --network=host -t {{.DockerImage}} .
 fi

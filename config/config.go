@@ -55,6 +55,9 @@ func VolumesToStrings(vs []Volume) []string {
 }
 
 func StringsToVolumes(strs []string) []Volume {
+	if strs == nil {
+		return nil
+	}
 	ret := []Volume{}
 	for i := 0; i < len(strs); i += 2 {
 		ret = append(ret, Volume{DockerDir: strs[i], HostDir: strs[i+1]})
@@ -111,16 +114,16 @@ func FilterSlice[T any](slice []T, filter func(T) bool) []T {
 // Config the gots configuration
 type Config struct {
 	Type                     string
-	DockerImage              *string  `gots:"go,dockerimage" json:"DockerImage,omitempty"`
-	DockerHostname           *string  `gots:"go,dockerimage" json:"DockerHostname,omitempty"`
+	DockerImage              *string  `gots:"go,dockerimage,dockerfile" json:"DockerImage,omitempty"`
+	DockerHostname           *string  `gots:"go,dockerimage,dockerfile"" json:"DockerHostname,omitempty"`
 	ExecName                 *string  `gots:"go" json:"ExecName,omitempty"`
 	ExecArgs                 []string `gots:"go" json:"ExecArgs,omitempty"`
 	DeprecatedCompileCommand []string `json:"CompileCommand,omitempty"` // Deprecated
 	GoCompilePath            *string  `gots:"go" json:"GoCompilePath,omitempty"`
-	Port                     *int     `gots:"go,dockerimage" json:"Port,omitempty"`
-	Funnel                   *bool    `gots:"go,dockerimage" json:"Funnel,omitempty"`
-	DockerVolumes            []Volume `gots:"go,dockerimage" json:"DockerVolumes,omitempty"`
-	WorkDir                  *string  `gots:"go,dockerimage" json:"WorkDir,omitempty"`
+	Port                     *int     `gots:"go,dockerimage,dockerfile" json:"Port,omitempty"`
+	Funnel                   *bool    `gots:"go,dockerimage,dockerfile" json:"Funnel,omitempty"`
+	DockerVolumes            []Volume `gots:"go,dockerimage,dockerfile" json:"DockerVolumes"`
+	WorkDir                  *string  `gots:"go,dockerimage,dockerfile" json:"WorkDir,omitempty"`
 }
 
 func (c Config) GoCompilePathSafe() string {
